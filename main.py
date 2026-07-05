@@ -4,7 +4,7 @@ from jwt import InvalidTokenError
 from fastapi import HTTPException
 
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -125,7 +125,7 @@ async def verify(request: TokenRequest):
         )
 
 @app.get("/effective-config")
-async def effective_config(set: List[str] = []):
+async def effective_config(set: List[str] = Query(default=[])):
 
     config = {
         "port": 8000,
@@ -144,16 +144,55 @@ async def effective_config(set: List[str] = []):
 
     for key, value in os.environ.items():
         if key.startswith("APP_"):
-            config[key[4:].lower()] = value
+            actual = key[4:].lower()
+
+            if actual in ("port", "workers"):
+                config[actual] = int(value)
+
+            elif actual == "debug":
+                config[actual] = value.lower() in (
+                    "true",
+                    "1",
+                    "yes",
+                    "on",
+                )
+
+            else:
+                config[actual] = value
 
     for item in set:
-        if "=" in item:
-            k, v = item.split("=", 1)
-            config[k] = coerce(k, v)
+        if "=" not in item:
+            continue
+
+        key, value = item.split("=", 1)
+
+        if key == "port":
+            config["port"] = int(value)
+
+        elif key == "workers":
+            config["workers"] = int(value)
+
+        elif key == "debug":
+            config["debug"] = value.strip().lower() in (
+                "true",
+                "1",
+                "yes",
+                "on",
+            )
+
+        else:
+            config[key] = value
 
     config["port"] = int(config["port"])
     config["workers"] = int(config["workers"])
-    config["debug"] = to_bool(config["debug"])
+
+    if not isinstance(config["debug"], bool):
+        config["debug"] = str(config["debug"]).lower() in (
+            "true",
+            "1",
+            "yes",
+            "on",
+        )
 
     config["api_key"] = "****"
 
